@@ -87,13 +87,14 @@ def getDistance(page, printMode=0):
         if dist != INF:
             dists[title] = (next, dist + 1)
         else:
+            print("Loop found. No path to Philosophy.")
             dists[title] = (next, INF)
     return (title, dists[title][1])
 
 
 def fail():
     '''Called if no valid link is found.'''
-    print("No valid links")
+    print("No valid links. No path to Philosophy.")
     return ("NULL", INF)
 
 
