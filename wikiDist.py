@@ -1,3 +1,4 @@
+'''Some with too many commas'''
 import urllib.request
 import re
 import sys
@@ -79,6 +80,8 @@ def getDistance(page, printMode=0):
        valid link. Also stores the next page in the chain.
     '''
     title = getTitle(page)
+    #if ',' in title:
+    #    title = re.sub(',', '_', title)
     if printMode:
         print(title)
     if title not in dists:
@@ -104,17 +107,18 @@ def loadDists():
     with open("wikiDist.csv") as file:
         file.readline()
         for line in file:
-            title, next, dist = line.split(", ")
-            dists[title] = (next, int(dist))
+            title, next, dist = line.strip().split("\",\"")
+            dists[title[1:]] = (next, int(dist[:-1]))
     return dists
 
 
 def writeDists():
     '''Writes the dictionary back to the csv file.'''
     with open("wikiDist.csv", 'w') as file:
-        file.write("Title, Next, Dist\n")
+        file.write("Title,Next,Dist\n")
         for title, info in dists.items():
-            file.write("{}, {}, {}\n".format(title, info[0], info[1]))
+            file.write("\"{}\",\"{}\",\"{}\"\n".format(title, info[0], info[1]))
+
 
 dists = loadDists()
 for i in range(5):
