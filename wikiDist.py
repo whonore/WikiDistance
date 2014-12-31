@@ -80,25 +80,28 @@ def getDistance(page, printMode=0):
        valid link. Also stores the next page in the chain.
     '''
     title = getTitle(page)
-    #if ',' in title:
-    #    title = re.sub(',', '_', title)
     if printMode:
         print(title)
     if title not in dists:
         dists[title] = ("Unknown", INF)  # Needed to catch loops
-        next, dist = getDistance(fetchPage(getFirstLink(page)), printMode)
-        if dist != INF:
-            dists[title] = (next, dist + 1)
+        
+        firstLink = getFirstLink(page)
+        if not firstLink:                # No links found
+            dists[title] = ("NULL", INF)
         else:
-            print("Loop found. No path to Philosophy.")
-            dists[title] = (next, INF)
+            next, dist = getDistance(fetchPage(getFirstLink(page)), printMode)
+            if dist != INF:
+                dists[title] = (next, dist + 1)
+            else:
+                print("Loop found. No path to Philosophy.")
+                dists[title] = (next, INF)
     return (title, dists[title][1])
 
 
 def fail():
     '''Called if no valid link is found.'''
     print("No valid links. No path to Philosophy.")
-    return ("NULL", INF)
+    return None
 
 
 def loadDists():
@@ -121,7 +124,7 @@ def writeDists():
 
 
 dists = loadDists()
-for i in range(5):
+for i in range(100):
     print("Starting new random")
     getDistance(fetchPage(), 1)
     print()
