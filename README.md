@@ -16,3 +16,7 @@ A list of the article titles, the next article they point to and their distance
 to Philosophy are stored in a csv file. This file is loaded every time the
 program runs to avoid recalculating distances for articles that have already
 been visited.
+
+Run the code with: <br>
+python wikiDist.py (<# of iterations>) <br>
+Number of iterations is 10 by default
