@@ -51,7 +51,7 @@ def getFirstLink(source):
 
 def validLink(content, start, end):
     '''Checks that the link is valid.
-       The link must not be in italics, parentheses a table or a div.
+       The link must not be in italics, parentheses, a table, or a div.
     '''
     for bad in badLinks:  # Make sure it is correct kind of link
         if content[start:end].find(bad + ":") > -1:
@@ -84,7 +84,7 @@ def getDistance(page, printMode=0):
         print(title)
     if title not in dists:
         dists[title] = ("Unknown", INF)  # Needed to catch loops
-        
+
         firstLink = getFirstLink(page)
         if not firstLink:                # No links found
             dists[title] = ("NULL", INF)
@@ -120,12 +120,21 @@ def writeDists():
     with open("wikiDist.csv", 'w') as file:
         file.write("Title,Next,Dist\n")
         for title, info in dists.items():
-            file.write("\"{}\",\"{}\",\"{}\"\n".format(title, info[0], info[1]))
+            file.write("\"{}\",\"{}\",\"{}\"\n".format(
+                title, info[0], info[1]))
 
 
-dists = loadDists()
-for i in range(100):
-    print("Starting new random")
-    getDistance(fetchPage(), 1)
-    print()
-writeDists()
+if __name__ == "__main__":
+    iters = 10
+    if len(sys.argv) > 1:
+        try:
+            iters = int(sys.argv[1])
+        except ValueError:
+            sys.exit("run as: python wikiDist.py (<number of iterations>)")
+
+    dists = loadDists()
+    for i in range(iters):
+        print("Starting from new random article...")
+        getDistance(fetchPage(), 1)
+        print()
+    writeDists()
