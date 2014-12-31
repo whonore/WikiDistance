@@ -1,4 +1,3 @@
-'''Some with too many commas'''
 import urllib.request
 import re
 import sys

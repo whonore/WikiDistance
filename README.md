@@ -19,5 +19,5 @@ program runs to avoid recalculating distances for articles that have already
 been visited.
 
 Run the code with: <br>
-python wikiDist.py (<# of iterations>) <br>
+<code>python wikiDist.py (<# of iterations>)</code> <br>
 Number of iterations is 10 by default
