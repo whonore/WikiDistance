@@ -4,10 +4,11 @@ WikiDistance
 A program to calculate the "distance" from Wikipedia pages to the Philosophy page.
 
 Starting from a random Wikipedia article it finds the first "valid" link on the
-page and follows it until one of the following occurs:
-    - The Philosophy article is reached
-    - The article has no valid links
-    - The article eventually loops back to itself
+page and follows it until one of the following occurs: <br>
+
+- The Philosophy article is reached
+- The article has no valid links
+- The article eventually loops back to itself
     
 A valid link is the first link to another Wikipedia article in the main body of
 the article that is not in italics, parentheses, a table or a div.
