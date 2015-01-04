@@ -21,3 +21,9 @@ been visited.
 Run the code with: <br>
 <code>python wikiDist.py (<# of iterations>)</code> <br>
 Number of iterations is 10 by default
+
+Known Bugs:
+
+- If the Wikipedia article has an unclosed parenthesis or tag the program may
+  fail to find a valid link.
+- Titles with quotes in them do not get properly escaped in the csv.

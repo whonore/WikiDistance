@@ -3,7 +3,7 @@ import re
 import sys
 
 wikiURL = "https://en.wikipedia.org/wiki/{}"
-badLinks = ["Book", "Help", "Wikipedia", "File"]
+badLinks = ["Book", "Help", "Wikipedia", "File", "Special"]
 badContain = [("(", ")"),
               ("<table", "</table>"),
               ("<div", "</div>"),
@@ -27,7 +27,7 @@ def getTitle(source):
     return titleRe.match(source).group(1)
 
 
-def getFirstLink(source):
+def getFirstLink(source, title, printMode=0):
     '''Finds the first "valid" link of the page.'''
     linkRe = re.compile(".*<a href=\"/wiki/(.+)\" title.*")
 
@@ -36,16 +36,29 @@ def getFirstLink(source):
 
     aStart = content.find("<a href=\"/wiki/")      # find start of link
     aEnd = content[aStart:].find("</a>") + aStart  # find end of link
-    while not validLink(content, aStart, aEnd):    # make sure it is valid
+
+    isValid, failType = validLink(content, aStart, aEnd)
+    while not isValid:                             # make sure it is valid
         aStart = content[aEnd:].find("<a href=\"/wiki/") + aEnd
         if aStart < aEnd:
-            return fail()
+            logMessage("No path error",
+                       "No valid links found for {}.\n"
+                       "\tManual check should be performed for "
+                       "unclosed parentheses.".format(title),
+                       printMode)
+            return None
         aEnd = content[aStart:].find("</a>") + aStart
 
+        isValid, failType = validLink(content, aStart, aEnd)
+
+    link = content[aStart:aEnd]
     try:  # get the name of the next page
-        return linkRe.match(content[aStart:aEnd]).group(1)
+        return linkRe.match(link).group(1)
     except AttributeError:
-        return fail()
+        logMessage("No title error",
+                   "Title could not be found in {}".format(link),
+                   printMode)
+        return None
 
 
 def validLink(content, start, end):
@@ -54,7 +67,7 @@ def validLink(content, start, end):
     '''
     for bad in badLinks:  # Make sure it is correct kind of link
         if content[start:end].find(bad + ":") > -1:
-            return False
+            return (False, bad)
 
     for tok in badContain:          # Make sure not in bad container
         numOpenClose = [0, 0]
@@ -69,9 +82,9 @@ def validLink(content, start, end):
                 numOpenClose[openClose] += 1
 
         if numOpenClose[0] != numOpenClose[1]:
-            return False
+            return (False, tok)
 
-    return True
+    return (True, None)
 
 
 def getDistance(page, printMode=0):
@@ -84,23 +97,20 @@ def getDistance(page, printMode=0):
     if title not in dists:
         dists[title] = ("Unknown", INF)  # Needed to catch loops
 
-        firstLink = getFirstLink(page)
+        firstLink = getFirstLink(page, title, printMode)
         if not firstLink:                # No links found
             dists[title] = ("NULL", INF)
         else:
-            next, dist = getDistance(fetchPage(getFirstLink(page)), printMode)
+            next, dist = getDistance(fetchPage(getFirstLink(page, title)),
+                                     printMode)
             if dist != INF:
                 dists[title] = (next, dist + 1)
             else:
-                print("Loop found. No path to Philosophy.")
+                logMessage("No path error",
+                           "Loop found from {} to {}".format(title, next),
+                           printMode)
                 dists[title] = (next, INF)
     return (title, dists[title][1])
-
-
-def fail():
-    '''Called if no valid link is found.'''
-    print("No valid links. No path to Philosophy.")
-    return None
 
 
 def loadDists():
@@ -121,6 +131,14 @@ def writeDists():
         for title, info in dists.items():
             file.write("\"{}\",\"{}\",\"{}\"\n".format(
                 title, info[0], info[1]))
+
+
+def logMessage(messageType, message, printMessage=0):
+    '''Writes a message to the log.'''
+    with open("log.txt", 'a') as log:
+        log.write("{}: {}\n".format(messageType, message))
+    if printMessage:
+        print("{}: {}".format(messageType, message))
 
 
 if __name__ == "__main__":
