@@ -1,157 +1,169 @@
-import urllib.request
+import argparse
+import csv
+import logging
 import re
 import sys
-
-wikiURL = "https://en.wikipedia.org/wiki/{}"
-badLinks = ["Book", "Help", "Wikipedia", "File", "Special"]
-badContain = [("(", ")"),
-              ("<table", "</table>"),
-              ("<div", "</div>"),
-              ("<i>", "</i>")]
-INF = -1
+try:
+    import urllib.request as urls
+except ImportError:
+    import urllib2 as urls
+from bs4 import BeautifulSoup
 
 
-def fetchPage(topic="Special:Random"):
-    '''Returns the HTTPResponse object for a given Wikipedia topic.'''
-    url = wikiURL.format(topic)
-    page = urllib.request.urlopen(url)
-    source = str(page.read())[2:-1]
-
-    return source
+INF = float('inf')
 
 
-def getTitle(source):
-    '''Finds the title of the page.'''
-    titleRe = re.compile(
-        ".*<title>(.*) - Wikipedia, the free encyclopedia</title>.*")
-    return titleRe.match(source).group(1)
+class WikiCrawler(object):
+    WIKI_URL = 'https://en.wikipedia.org/wiki/'
 
+    TITLE_RE = re.compile(r'(.+) - Wikipedia')
 
-def getFirstLink(source, title, printMode=0):
-    '''Finds the first "valid" link of the page.'''
-    linkRe = re.compile(".*<a href=\"/wiki/(.+)\" title.*")
+    BAD_LINKS = ('Book', 'Help', 'Wikipedia', 'File', 'Special')
+    LINK_RE = re.compile(r"/wiki/(?!{}:)".format('|'.join(BAD_LINKS)))
 
-    contentStart = source.find("mw-content-text")  # find start of content
-    content = source[contentStart:]
+    BAD_PARENTS = ('div', 'span', 'table', 'b', 'i')
 
-    aStart = content.find("<a href=\"/wiki/")      # find start of link
-    aEnd = content[aStart:].find("</a>") + aStart  # find end of link
+    def __init__(self, topic='Special:Random'):
+        url = self.WIKI_URL + topic
+        self.page = BeautifulSoup(urls.urlopen(url), 'html.parser')
+        self.title = self.TITLE_RE.match(self.page.title.text).group(1)
+        self.content = self.page.find(id='mw-content-text')
 
-    isValid, failType = validLink(content, aStart, aEnd)
-    while not isValid:                             # make sure it is valid
-        aStart = content[aEnd:].find("<a href=\"/wiki/") + aEnd
-        if aStart < aEnd:
-            logMessage("No path error",
-                       "No valid links found for {}.\n"
-                       "\tManual check should be performed for "
-                       "unclosed parentheses.".format(title),
-                       printMode)
+    def get_first_link(self):
+        link = self.content.find(self.is_valid)
+
+        if link is None:
+            logging.info("No link found on %s", self.title)
             return None
-        aEnd = content[aStart:].find("</a>") + aStart
+        else:
+            return link['href'].split('/')[2]
 
-        isValid, failType = validLink(content, aStart, aEnd)
+    def is_valid(self, tag):
+        if tag.name != 'a':
+            return False
 
-    link = content[aStart:aEnd]
-    try:  # get the name of the next page
-        return linkRe.match(link).group(1)
-    except AttributeError:
-        logMessage("No title error",
-                   "Title could not be found in {}".format(link),
-                   printMode)
-        return None
+        if not re.match(self.LINK_RE, tag['href']):
+            return False
 
+        for parent in tag.parents:
+            if parent.get('id') == 'mw-content-text':
+                break
 
-def validLink(content, start, end):
-    '''Checks that the link is valid.
-       The link must not be in italics, parentheses, a table, or a div.
-    '''
-    for bad in badLinks:  # Make sure it is correct kind of link
-        if content[start:end].find(bad + ":") > -1:
-            return (False, bad)
+            if parent.name in self.BAD_PARENTS:
+                return False
 
-    for tok in badContain:          # Make sure not in bad container
-        numOpenClose = [0, 0]
+        if in_parens(str(self.content), str(tag)):
+            return False
 
-        for openClose in range(2):  # check that all opened containers
-            begin = 0               # are closed
-            while True:
-                pos = content[begin:start].find(tok[openClose])
-                if pos == -1:
-                    break
-                begin += pos + len(tok[openClose])
-                numOpenClose[openClose] += 1
-
-        if numOpenClose[0] != numOpenClose[1]:
-            return (False, tok)
-
-    return (True, None)
+        return True
 
 
-def getDistance(page, printMode=0):
+def compute_distance(dists, topic=None):
     '''Finds the "distance" to the Philosophy page by following the first
        valid link. Also stores the next page in the chain.
     '''
-    title = getTitle(page)
-    if printMode:
-        print(title)
-    if title not in dists:
-        dists[title] = ("Unknown", INF)  # Needed to catch loops
+    if topic is None:
+        page = WikiCrawler()
+    else:
+        page = WikiCrawler(topic)
 
-        firstLink = getFirstLink(page, title, printMode)
-        if not firstLink:                # No links found
-            dists[title] = ("NULL", INF)
+    title = page.title
+    logging.info(title)
+
+    if title not in dists:
+        dists[title] = ('Unknown', INF)  # Needed to catch loops
+
+        link = page.get_first_link()
+
+        if link is None:                # No links found
+            dists[title] = ('NULL', INF)
         else:
-            next, dist = getDistance(fetchPage(getFirstLink(page, title)),
-                                     printMode)
-            if dist != INF:
-                dists[title] = (next, dist + 1)
-            else:
-                logMessage("No path error",
-                           "Loop found from {} to {}".format(title, next),
-                           printMode)
-                dists[title] = (next, INF)
+            next_, dist = compute_distance(dists, link)
+
+            if dist == INF:
+                logging.info("Loop found from %s to %s", title, next_)
+
+            dists[title] = (next_, dist + 1)
+
     return (title, dists[title][1])
 
 
-def loadDists():
+def in_parens(text, target):
+    if '(' not in text or ')' not in text:
+        return False
+
+    open = 1
+    contained = []
+
+    start = text.find('(')
+    end = text.rfind(')')
+    for c in text[start + 1:end]:
+        if c == '(':
+            open += 1
+        elif c == ')':
+            open -= 1
+        elif open > 0:
+            contained.append(c)
+
+    return target in ''.join(contained)
+
+
+def load_dists():
     '''Loads the csv file into a dictionary.'''
-    dists = {"Philosophy": ("NULL", 0)}
-    with open("wikiDist.csv") as file:
-        file.readline()
-        for line in file:
-            title, next, dist = line.strip().split("\",\"")
-            dists[title[1:]] = (next, int(dist[:-1]))
+    if sys.version_info.major < 3:
+        kwargs = {'mode': 'rb'} 
+    else:
+        kwargs = {'mode': 'r', 'newline': ''}
+    
+    dists = {'Philosophy': ('NONE', 0)}
+    
+    try:
+        with open('wikidist.csv', **kwargs) as in_f:
+            reader = csv.reader(in_f)
+            next(reader)
+
+            for title, next_, dist in reader:
+                if dist == 'inf':
+                    dists[title] = (next_, float(dist))
+                else:
+                    dists[title] = (next_, int(dist))
+    except IOError:
+        pass
+
     return dists
 
 
-def writeDists():
+def write_dists(dists):
     '''Writes the dictionary back to the csv file.'''
-    with open("wikiDist.csv", 'w') as file:
-        file.write("Title,Next,Dist\n")
-        for title, info in dists.items():
-            file.write("\"{}\",\"{}\",\"{}\"\n".format(
-                title, info[0], info[1]))
+    if sys.version_info.major < 3:
+        kwargs = {'mode': 'wb'} 
+    else:
+        kwargs = {'mode': 'w', 'newline': ''}
+    
+    with open('wikidist.csv', **kwargs) as out_f:
+        writer = csv.writer(out_f)
+        writer.writerow(['Title', 'Next', 'Dist'])
+
+        for title, (next_, dist) in dists.items():
+            writer.writerow([title, next_, dist])
 
 
-def logMessage(messageType, message, printMessage=0):
-    '''Writes a message to the log.'''
-    with open("log.txt", 'a') as log:
-        log.write("{}: {}\n".format(messageType, message))
-    if printMessage:
-        print("{}: {}".format(messageType, message))
+def main(iters, start):
+    dists = load_dists()
 
-
-if __name__ == "__main__":
-    iters = 10
-    if len(sys.argv) > 1:
-        try:
-            iters = int(sys.argv[1])
-        except ValueError:
-            sys.exit("run as: python wikiDist.py (<number of iterations>)")
-
-    dists = loadDists()
     for i in range(iters):
-        print("Starting from new random article...")
-        getDistance(fetchPage(), 1)
-        print()
-    writeDists()
+        logging.info('Starting from a random article')
+        compute_distance(dists, start)
+
+    write_dists(dists)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--iters', type=int, default=10)
+    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-s', '--start', default=None)
+
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO if args.verbose else logging.ERROR)
+    main(args.iters, args.start)
